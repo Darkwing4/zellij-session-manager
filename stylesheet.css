@@ -1,0 +1,19 @@
+.zellij-panel-button {
+    padding: 0 4px;
+}
+
+.zellij-panel-icon {
+    icon-size: 22px;
+}
+
+.zellij-session-current {
+    font-weight: bold;
+}
+
+.zellij-session-exited {
+    color: #888;
+}
+
+.zellij-delete-button {
+    padding: 0 4px;
+}
