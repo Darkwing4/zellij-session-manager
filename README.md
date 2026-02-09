@@ -1,4 +1,4 @@
-# Zellij Sessions
+# Zellij Sessions Manager
 
 GNOME Shell extension for managing [Zellij](https://github.com/zellij-org/zellij) terminal sessions from the top panel.
 
