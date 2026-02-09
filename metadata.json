@@ -3,5 +3,5 @@
   "description": "Manage Zellij terminal sessions from the GNOME panel. List, open, and delete sessions with a single click. If a session window is already open, it focuses the existing window instead of creating a new one.",
   "uuid": "zellij-sessions-manager@darkwing4.dev",
   "shell-version": ["49"],
-  "url": ""
+  "url": "https://github.com/Darkwing4/zellij-session-manager"
 }
