@@ -5,6 +5,8 @@ GNOME Shell extension for managing [Zellij](https://github.com/zellij-org/zellij
 ![GNOME 49](https://img.shields.io/badge/GNOME-49-blue)
 ![License GPL-2.0](https://img.shields.io/badge/License-GPL--2.0-green)
 
+![Screenshot](https://github.com/user-attachments/assets/c72066ed-d91a-424e-bc77-b21d7f8650ec)
+
 ## Features
 
 - **Session list** — see all Zellij sessions (active, exited, current) in a dropdown menu
