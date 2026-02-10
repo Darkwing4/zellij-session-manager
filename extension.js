@@ -7,7 +7,7 @@ import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 
-const TERMINAL_WM_CLASSES = ['Ptyxis', 'org.gnome.Ptyxis'];
+const TERMINAL_WM_CLASSES = ['ptyxis'];
 
 const ZellijSessionsIndicator = GObject.registerClass(
 class ZellijSessionsIndicator extends PanelMenu.Button {
@@ -142,12 +142,13 @@ class ZellijSessionsIndicator extends PanelMenu.Button {
     _findSessionWindow(sessionName) {
         for (const actor of global.get_window_actors()) {
             const win = actor.meta_window;
-            const wmClass = win.get_wm_class() || '';
+            const wmClass = (win.get_wm_class() || '').toLowerCase();
 
             if (!TERMINAL_WM_CLASSES.some(cls => wmClass.includes(cls))) continue;
 
             const title = win.get_title() || '';
             if (title.includes(`Zellij (${sessionName})`)) return win;
+            if (title === sessionName) return win;
         }
         return null;
     }
