@@ -11,8 +11,10 @@ GNOME Shell extension for managing [Zellij](https://github.com/zellij-org/zellij
 
 - **Session list** — see all Zellij sessions (active, exited, current) in a dropdown menu
 - **Smart open** — click a session to focus its existing window, or open a new terminal if none found
+- **Rename sessions** — inline rename with confirm/cancel buttons
 - **Delete sessions** — trash icon to kill active or remove exited sessions
 - **New session** — quick action to start a fresh Zellij session
+- **Configurable terminals** — set terminal WM classes in extension settings
 - **Auto-refresh** — menu updates every time you open it
 
 ## Requirements
@@ -30,10 +32,10 @@ Coming soon.
 ### Manual
 
 ```bash
-git clone https://github.com/USER/zellij-sessions-manager.git
-cd zellij-sessions-manager
+git clone https://github.com/Darkwing4/zellij-session-manager.git
+cd zellij-session-manager
 mkdir -p ~/.local/share/gnome-shell/extensions/zellij-sessions-manager@darkwing4.dev
-cp extension.js metadata.json stylesheet.css LICENSE \
+cp -r extension.js metadata.json stylesheet.css schemas/ LICENSE \
    ~/.local/share/gnome-shell/extensions/zellij-sessions-manager@darkwing4.dev/
 ```
 
@@ -45,7 +47,7 @@ gnome-extensions enable zellij-sessions-manager@darkwing4.dev
 
 ## How it works
 
-The extension adds a terminal icon to the panel. Clicking it runs `zellij list-sessions --no-formatting` and builds a popup menu from the output. Clicking a session searches open windows for a matching title (`Zellij (<name>)`) — if found, it focuses that window; otherwise it spawns `ptyxis -- zellij attach <name> -c`.
+The extension adds a terminal icon to the panel. Clicking it runs `zellij list-sessions --no-formatting` and builds a popup menu from the output. Clicking a session searches open windows for a matching title (`Zellij (<name>)`) — if found, it focuses that window; otherwise it spawns `ptyxis -- zellij attach <name> -c`. Renaming uses `zellij -s <old> action rename-session <new>`.
 
 ## License
 
