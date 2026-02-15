@@ -1,6 +1,7 @@
 import GObject from 'gi://GObject';
 import St from 'gi://St';
 import Gio from 'gi://Gio';
+import GLib from 'gi://GLib';
 import Clutter from 'gi://Clutter';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
@@ -73,7 +74,7 @@ class ZellijSessionsIndicator extends PanelMenu.Button {
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
 
         const newItem = new PopupMenu.PopupMenuItem('New Session\u2026');
-        newItem.connect('activate', () => this._spawnTerminal(['zellij']));
+        newItem.connect('activate', () => this._openFolderPicker());
         this.menu.addMenuItem(newItem);
     }
 
@@ -267,9 +268,36 @@ class ZellijSessionsIndicator extends PanelMenu.Button {
         return null;
     }
 
-    _spawnTerminal(args, title) {
+    _openFolderPicker() {
+        try {
+            const proc = Gio.Subprocess.new(
+                ['zenity', '--file-selection', '--directory', '--title=Select Session Folder'],
+                Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE
+            );
+
+            proc.communicate_utf8_async(null, null, (_proc, result) => {
+                try {
+                    const [, stdout] = proc.communicate_utf8_finish(result);
+                    if (proc.get_exit_status() !== 0) return;
+
+                    const folderPath = stdout.trim();
+                    if (!folderPath) return;
+
+                    const folderName = GLib.path_get_basename(folderPath);
+                    this._spawnTerminal(['zellij', '-s', folderName], folderName, folderPath);
+                } catch (e) {
+                    console.error(`ZellijSessions: folder picker error: ${e.message}`);
+                }
+            });
+        } catch (e) {
+            console.error(`ZellijSessions: failed to open folder picker: ${e.message}`);
+        }
+    }
+
+    _spawnTerminal(args, title, workingDirectory) {
         const cmd = ['ptyxis'];
         if (title) cmd.push('--title', title);
+        if (workingDirectory) cmd.push('-d', workingDirectory);
         cmd.push('--', ...args);
 
         try {
