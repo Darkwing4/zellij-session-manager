@@ -284,7 +284,7 @@ class ZellijSessionsIndicator extends PanelMenu.Button {
                     if (!folderPath) return;
 
                     const folderName = GLib.path_get_basename(folderPath);
-                    this._spawnTerminal(['zellij', '-s', folderName], folderName, folderPath);
+                    this._spawnTerminal(['zellij', 'attach', folderName, '-c'], folderName, folderPath);
                 } catch (e) {
                     console.error(`ZellijSessions: folder picker error: ${e.message}`);
                 }
