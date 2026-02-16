@@ -6,6 +6,7 @@ GNOME Shell extension for managing [Zellij](https://github.com/zellij-org/zellij
 ![License GPL-2.0](https://img.shields.io/badge/License-GPL--2.0-green)
 
 ![Screenshot](https://github.com/user-attachments/assets/c72066ed-d91a-424e-bc77-b21d7f8650ec)
+![Folder Picker](https://github.com/user-attachments/assets/9c82a289-9826-48ce-9dbd-9c29cf803d7b)
 
 ## Features
 
