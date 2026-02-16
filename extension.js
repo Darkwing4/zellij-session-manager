@@ -1,18 +1,18 @@
 import GObject from 'gi://GObject';
 import St from 'gi://St';
 import Gio from 'gi://Gio';
+import GLib from 'gi://GLib';
 import Clutter from 'gi://Clutter';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 
-const TERMINAL_WM_CLASSES = ['ptyxis'];
-
 const ZellijSessionsIndicator = GObject.registerClass(
 class ZellijSessionsIndicator extends PanelMenu.Button {
 
-    _init(extensionPath) {
+    _init(extensionPath, settings) {
+        this._settings = settings;
         super._init(0.5, 'Zellij Sessions');
 
         this.style_class = 'zellij-panel-button';
@@ -74,7 +74,7 @@ class ZellijSessionsIndicator extends PanelMenu.Button {
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
 
         const newItem = new PopupMenu.PopupMenuItem('New Session\u2026');
-        newItem.connect('activate', () => this._spawnTerminal(['zellij']));
+        newItem.connect('activate', () => this._openFolderPicker());
         this.menu.addMenuItem(newItem);
     }
 
@@ -92,6 +92,19 @@ class ZellijSessionsIndicator extends PanelMenu.Button {
         else if (isCurrent) label.style_class = 'zellij-session-current';
 
         item.add_child(label);
+
+        const editBtn = new St.Button({
+            child: new St.Icon({icon_name: 'document-edit-symbolic', icon_size: 14}),
+            style_class: 'zellij-edit-button',
+            reactive: true,
+        });
+
+        editBtn.connect('clicked', () => {
+            this._startRenaming(item, label, name, editBtn, deleteBtn);
+            return Clutter.EVENT_STOP;
+        });
+
+        item.add_child(editBtn);
 
         const deleteBtn = new St.Button({
             child: new St.Icon({icon_name: 'user-trash-symbolic', icon_size: 14}),
@@ -139,12 +152,114 @@ class ZellijSessionsIndicator extends PanelMenu.Button {
         }
     }
 
+    _startRenaming(item, label, name, editBtn, deleteBtn) {
+        item.hide();
+
+        const menuItems = this.menu._getMenuItems();
+        const position = menuItems.indexOf(item);
+
+        const renameItem = new PopupMenu.PopupBaseMenuItem({
+            activate: false,
+            reactive: false,
+            can_focus: false,
+            hover: false,
+        });
+
+        const entry = new St.Entry({
+            text: name,
+            x_expand: true,
+            can_focus: true,
+            reactive: true,
+            style_class: 'zellij-rename-entry',
+        });
+
+        const confirmBtn = new St.Button({
+            child: new St.Icon({icon_name: 'object-select-symbolic', icon_size: 14}),
+            style_class: 'zellij-confirm-button',
+            reactive: true,
+        });
+
+        const cancelBtn = new St.Button({
+            child: new St.Icon({icon_name: 'process-stop-symbolic', icon_size: 14}),
+            style_class: 'zellij-cancel-button',
+            reactive: true,
+        });
+
+        renameItem.add_child(entry);
+        renameItem.add_child(confirmBtn);
+        renameItem.add_child(cancelBtn);
+        this.menu.addMenuItem(renameItem, position);
+
+        const clutterText = entry.clutter_text;
+        clutterText.activatable = true;
+        global.stage.set_key_focus(clutterText);
+        clutterText.set_selection(0, entry.get_text().length);
+
+        let finished = false;
+        const finish = (newName) => {
+            if (finished) return;
+            finished = true;
+
+            if (this._menuCloseId) {
+                this.menu.disconnect(this._menuCloseId);
+                this._menuCloseId = null;
+            }
+
+            renameItem.destroy();
+            item.show();
+
+            if (newName && newName !== name) {
+                label.text = newName;
+                this._renameSession(name, newName);
+            }
+        };
+
+        clutterText.connect('activate', () => {
+            finish(entry.get_text().trim());
+        });
+
+        clutterText.connect('key-press-event', (_actor, event) => {
+            if (event.get_key_symbol() === Clutter.KEY_Escape) {
+                finish(null);
+                return Clutter.EVENT_STOP;
+            }
+            return Clutter.EVENT_PROPAGATE;
+        });
+
+        confirmBtn.connect('clicked', () => {
+            finish(entry.get_text().trim());
+            return Clutter.EVENT_STOP;
+        });
+
+        cancelBtn.connect('clicked', () => {
+            finish(null);
+            return Clutter.EVENT_STOP;
+        });
+
+        this._menuCloseId = this.menu.connect('open-state-changed', (_menu, open) => {
+            if (!open) finish(null);
+        });
+    }
+
+    _renameSession(oldName, newName) {
+        try {
+            const proc = Gio.Subprocess.new(
+                ['zellij', '-s', oldName, 'action', 'rename-session', newName],
+                Gio.SubprocessFlags.NONE
+            );
+            proc.wait_async(null, () => this._refreshSessions());
+        } catch (e) {
+            console.error(`ZellijSessions: failed to rename "${oldName}" to "${newName}": ${e.message}`);
+        }
+    }
+
     _findSessionWindow(sessionName) {
         for (const actor of global.get_window_actors()) {
             const win = actor.meta_window;
             const wmClass = (win.get_wm_class() || '').toLowerCase();
 
-            if (!TERMINAL_WM_CLASSES.some(cls => wmClass.includes(cls))) continue;
+            const terminalClasses = this._settings.get_strv('terminal-wm-classes');
+            if (!terminalClasses.some(cls => wmClass.includes(cls))) continue;
 
             const title = win.get_title() || '';
             if (title.includes(`Zellij (${sessionName})`)) return win;
@@ -153,9 +268,36 @@ class ZellijSessionsIndicator extends PanelMenu.Button {
         return null;
     }
 
-    _spawnTerminal(args, title) {
+    _openFolderPicker() {
+        try {
+            const proc = Gio.Subprocess.new(
+                ['zenity', '--file-selection', '--directory', '--title=Select Session Folder'],
+                Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE
+            );
+
+            proc.communicate_utf8_async(null, null, (_proc, result) => {
+                try {
+                    const [, stdout] = proc.communicate_utf8_finish(result);
+                    if (proc.get_exit_status() !== 0) return;
+
+                    const folderPath = stdout.trim();
+                    if (!folderPath) return;
+
+                    const folderName = GLib.path_get_basename(folderPath);
+                    this._spawnTerminal(['zellij', 'attach', folderName, '-c'], folderName, folderPath);
+                } catch (e) {
+                    console.error(`ZellijSessions: folder picker error: ${e.message}`);
+                }
+            });
+        } catch (e) {
+            console.error(`ZellijSessions: failed to open folder picker: ${e.message}`);
+        }
+    }
+
+    _spawnTerminal(args, title, workingDirectory) {
         const cmd = ['ptyxis'];
         if (title) cmd.push('--title', title);
+        if (workingDirectory) cmd.push('-d', workingDirectory);
         cmd.push('--', ...args);
 
         try {
@@ -169,7 +311,8 @@ class ZellijSessionsIndicator extends PanelMenu.Button {
 export default class ZellijSessionsExtension extends Extension {
 
     enable() {
-        this._indicator = new ZellijSessionsIndicator(this.path);
+        this._settings = this.getSettings();
+        this._indicator = new ZellijSessionsIndicator(this.path, this._settings);
         Main.panel.addToStatusArea('zellij-sessions-manager', this._indicator);
     }
 
@@ -178,5 +321,6 @@ export default class ZellijSessionsExtension extends Extension {
             this._indicator.destroy();
             this._indicator = null;
         }
+        this._settings = null;
     }
 }

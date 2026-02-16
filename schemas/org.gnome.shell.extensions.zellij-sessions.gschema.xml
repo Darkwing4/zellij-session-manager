@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <schema id="org.gnome.shell.extensions.zellij-sessions"
+          path="/org/gnome/shell/extensions/zellij-sessions/">
+    <key type="as" name="terminal-wm-classes">
+      <default><![CDATA[['ptyxis']]]></default>
+    </key>
+  </schema>
+</schemalist>
