@@ -21,7 +21,6 @@ GNOME Shell extension for managing [Zellij](https://github.com/zellij-org/zellij
 
 - GNOME Shell 49+
 - [Zellij](https://github.com/zellij-org/zellij) installed and in `$PATH`
-- [Ptyxis](https://gitlab.gnome.org/chergert/ptyxis) terminal (default in GNOME 47+)
 
 ## Install
 
