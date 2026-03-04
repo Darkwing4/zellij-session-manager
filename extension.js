@@ -59,16 +59,15 @@ class ZellijSessionsIndicator extends PanelMenu.Button {
 
         if (!output) {
             this._addDisabledItem('No sessions');
-            return;
-        }
+        } else {
+            for (const line of output.split('\n')) {
+                const name = line.split(' ')[0];
+                if (!name) continue;
 
-        for (const line of output.split('\n')) {
-            const name = line.split(' ')[0];
-            if (!name) continue;
-
-            const isCurrent = line.includes('(current)');
-            const isExited = line.includes('EXITED');
-            this._addSessionItem(name, {isCurrent, isExited});
+                const isCurrent = line.includes('(current)');
+                const isExited = line.includes('EXITED');
+                this._addSessionItem(name, {isCurrent, isExited});
+            }
         }
 
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
