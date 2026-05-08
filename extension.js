@@ -97,9 +97,11 @@ class ZellijSessionsIndicator extends PanelMenu.Button {
         item.add_child(label);
 
         const editBtn = new St.Button({
-            child: new St.Icon({icon_name: 'document-edit-symbolic', icon_size: 14}),
+            child: new St.Icon({icon_name: 'document-edit-symbolic', icon_size: 14, y_align: Clutter.ActorAlign.CENTER}),
             style_class: 'zellij-edit-button',
             reactive: true,
+            y_expand: true,
+            y_align: Clutter.ActorAlign.FILL,
         });
 
         editBtn.connect('clicked', () => {
@@ -110,9 +112,11 @@ class ZellijSessionsIndicator extends PanelMenu.Button {
         item.add_child(editBtn);
 
         const deleteBtn = new St.Button({
-            child: new St.Icon({icon_name: 'user-trash-symbolic', icon_size: 14}),
+            child: new St.Icon({icon_name: 'user-trash-symbolic', icon_size: 14, y_align: Clutter.ActorAlign.CENTER}),
             style_class: 'zellij-delete-button',
             reactive: true,
+            y_expand: true,
+            y_align: Clutter.ActorAlign.FILL,
         });
 
         deleteBtn.connect('clicked', () => {
