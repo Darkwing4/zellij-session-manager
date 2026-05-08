@@ -61,11 +61,15 @@ class ZellijSessionsIndicator extends PanelMenu.Button {
             this._addDisabledItem('No sessions');
         } else {
             for (const line of output.split('\n')) {
-                const name = line.split(' ')[0];
+                const trimmed = line.replace(/\s+$/, '');
+                if (!trimmed) continue;
+
+                const bracketIdx = trimmed.search(/\s\[/);
+                const name = bracketIdx > 0 ? trimmed.slice(0, bracketIdx) : trimmed;
                 if (!name) continue;
 
-                const isCurrent = line.includes('(current)');
-                const isExited = line.includes('EXITED');
+                const isCurrent = trimmed.includes('(current)');
+                const isExited = trimmed.includes('EXITED');
                 this._addSessionItem(name, {isCurrent, isExited});
             }
         }
@@ -294,10 +298,25 @@ class ZellijSessionsIndicator extends PanelMenu.Button {
     }
 
     _spawnTerminal(args, title, workingDirectory) {
-        const cmd = ['ptyxis'];
-        if (title) cmd.push('--title', title);
-        if (workingDirectory) cmd.push('-d', workingDirectory);
-        cmd.push('--', ...args);
+        const template = this._settings.get_strv('terminal-argv');
+        const cmd = [];
+
+        for (const part of template) {
+            if (part === '{cmd}') {
+                cmd.push(...args);
+                continue;
+            }
+            let s = part;
+            if (s.includes('{cwd}')) {
+                if (!workingDirectory) continue;
+                s = s.replaceAll('{cwd}', workingDirectory);
+            }
+            if (s.includes('{title}')) {
+                if (!title) continue;
+                s = s.replaceAll('{title}', title);
+            }
+            cmd.push(s);
+        }
 
         try {
             Gio.Subprocess.new(cmd, Gio.SubprocessFlags.NONE);
