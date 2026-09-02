@@ -35,7 +35,10 @@ Coming soon.
 ### From a release bundle
 
 ```bash
-gnome-extensions install --force zellij-sessions-manager@darkwing4.dev.shell-extension.zip
+UUID=zellij-sessions-manager@darkwing4.dev
+mkdir -p ~/.local/share/gnome-shell/extensions/$UUID
+unzip -o $UUID.shell-extension.zip -d ~/.local/share/gnome-shell/extensions/$UUID
+glib-compile-schemas ~/.local/share/gnome-shell/extensions/$UUID/schemas
 ```
 
 ### From source
@@ -43,8 +46,11 @@ gnome-extensions install --force zellij-sessions-manager@darkwing4.dev.shell-ext
 ```bash
 git clone https://github.com/Darkwing4/zellij-session-manager.git
 cd zellij-session-manager
-gnome-extensions pack --force .
-gnome-extensions install --force zellij-sessions-manager@darkwing4.dev.shell-extension.zip
+UUID=zellij-sessions-manager@darkwing4.dev
+glib-compile-schemas schemas
+mkdir -p ~/.local/share/gnome-shell/extensions/$UUID
+cp -r extension.js metadata.json stylesheet.css schemas LICENSE \
+   ~/.local/share/gnome-shell/extensions/$UUID/
 ```
 
 Log out and back in (GNOME Shell cannot be restarted on Wayland), then enable it:
