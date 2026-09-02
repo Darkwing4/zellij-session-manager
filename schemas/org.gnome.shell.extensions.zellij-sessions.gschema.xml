@@ -2,11 +2,20 @@
 <schemalist>
   <schema id="org.gnome.shell.extensions.zellij-sessions"
           path="/org/gnome/shell/extensions/zellij-sessions/">
+    <key type="as" name="terminal-argv">
+      <default><![CDATA[[]]]></default>
+      <summary>Custom terminal command</summary>
+      <description>Command used to open a session. Placeholders: {cmd} for the zellij arguments, {cwd} for the working directory, {title} for the window title. Leave empty to use the system default terminal.</description>
+    </key>
     <key type="as" name="terminal-wm-classes">
-      <default><![CDATA[['ptyxis']]]></default>
+      <default><![CDATA[[]]]></default>
+      <summary>Terminal window classes</summary>
+      <description>Window classes considered terminals when looking for an already open session window. Leave empty to match any window by title.</description>
     </key>
     <key type="as" name="pinned-sessions">
       <default><![CDATA[[]]]></default>
+      <summary>Pinned sessions</summary>
+      <description>Session names pinned to the top of the menu, in display order.</description>
     </key>
   </schema>
 </schemalist>

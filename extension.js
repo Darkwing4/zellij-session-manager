@@ -455,7 +455,8 @@ class ZellijSessionsIndicator extends PanelMenu.Button {
             const wmClass = (win.get_wm_class() || '').toLowerCase();
 
             const terminalClasses = this._settings.get_strv('terminal-wm-classes');
-            if (!terminalClasses.some(cls => wmClass.includes(cls))) continue;
+            if (terminalClasses.length > 0 && !terminalClasses.some(cls => wmClass.includes(cls)))
+                continue;
 
             const title = win.get_title() || '';
             if (title.includes(`Zellij (${sessionName})`)) return win;
@@ -492,6 +493,11 @@ class ZellijSessionsIndicator extends PanelMenu.Button {
 
     _spawnTerminal(args, title, workingDirectory) {
         const template = this._settings.get_strv('terminal-argv');
+        if (template.length === 0) {
+            this._spawnInDefaultTerminal(args, workingDirectory);
+            return;
+        }
+
         const cmd = [];
 
         for (const part of template) {
@@ -515,6 +521,35 @@ class ZellijSessionsIndicator extends PanelMenu.Button {
             Gio.Subprocess.new(cmd, Gio.SubprocessFlags.NONE);
         } catch (e) {
             console.error(`ZellijSessions: failed to spawn terminal: ${e.message}`);
+        }
+    }
+
+    _spawnInDefaultTerminal(args, workingDirectory) {
+        const xdgTerminal = GLib.find_program_in_path('xdg-terminal-exec');
+
+        if (xdgTerminal) {
+            const launcher = new Gio.SubprocessLauncher({flags: Gio.SubprocessFlags.NONE});
+            if (workingDirectory) launcher.set_cwd(workingDirectory);
+
+            try {
+                launcher.spawnv([xdgTerminal, ...args]);
+                return;
+            } catch (e) {
+                console.error(`ZellijSessions: xdg-terminal-exec failed: ${e.message}`);
+            }
+        }
+
+        const commandLine = args.map(arg => GLib.shell_quote(arg)).join(' ');
+
+        try {
+            const appInfo = Gio.AppInfo.create_from_commandline(
+                commandLine,
+                null,
+                Gio.AppInfoCreateFlags.NEEDS_TERMINAL
+            );
+            appInfo.launch([], null);
+        } catch (e) {
+            console.error(`ZellijSessions: failed to launch default terminal: ${e.message}`);
         }
     }
 });
