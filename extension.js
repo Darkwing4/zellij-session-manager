@@ -62,7 +62,12 @@ class ZellijSessionsIndicator extends PanelMenu.Button {
         const pinnedNames = this._settings.get_strv('pinned-sessions');
         const byName = new Map(sessions.map(s => [s.name, s]));
         const pinned = pinnedNames.map(name => byName.get(name)).filter(s => s !== undefined);
-        const others = sessions.filter(s => !pinnedNames.includes(s.name));
+        const others = sessions
+            .filter(s => !pinnedNames.includes(s.name))
+            .sort((a, b) => {
+                if (a.isExited !== b.isExited) return a.isExited ? 1 : -1;
+                return a.name.localeCompare(b.name);
+            });
 
         const listSection = this._addScrollableSection();
 
