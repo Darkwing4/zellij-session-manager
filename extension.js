@@ -26,6 +26,7 @@ class ZellijSessionsIndicator extends PanelMenu.Button {
         this.menu.addMenuItem(new PopupMenu.PopupMenuItem('Loading...'));
         this.menu.connect('open-state-changed', (_menu, open) => {
             if (open) this._refreshSessions();
+            else this._endDrag();
         });
     }
 
@@ -57,21 +58,31 @@ class ZellijSessionsIndicator extends PanelMenu.Button {
     _buildMenu(output) {
         this.menu.removeAll();
 
-        if (!output) {
-            this._addDisabledItem('No sessions');
-        } else {
-            for (const line of output.split('\n')) {
-                const trimmed = line.replace(/\s+$/, '');
-                if (!trimmed) continue;
+        const sessions = this._parseSessions(output);
+        const pinnedNames = this._settings.get_strv('pinned-sessions');
+        const byName = new Map(sessions.map(s => [s.name, s]));
+        const pinned = pinnedNames.map(name => byName.get(name)).filter(s => s !== undefined);
+        const others = sessions.filter(s => !pinnedNames.includes(s.name));
 
-                const bracketIdx = trimmed.search(/\s\[/);
-                const name = bracketIdx > 0 ? trimmed.slice(0, bracketIdx) : trimmed;
-                if (!name) continue;
+        const listSection = this._addScrollableSection();
 
-                const isCurrent = trimmed.includes('(current)');
-                const isExited = trimmed.includes('EXITED');
-                this._addSessionItem(name, {isCurrent, isExited});
-            }
+        this._pinnedSection = new PopupMenu.PopupMenuSection();
+        listSection.addMenuItem(this._pinnedSection);
+        for (const session of pinned)
+            this._addSessionItem(this._pinnedSection, session, true);
+
+        if (pinned.length > 0 && others.length > 0)
+            listSection.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+
+        const otherSection = new PopupMenu.PopupMenuSection();
+        listSection.addMenuItem(otherSection);
+        for (const session of others)
+            this._addSessionItem(otherSection, session, false);
+
+        if (sessions.length === 0) {
+            const empty = new PopupMenu.PopupMenuItem('No sessions');
+            empty.setSensitive(false);
+            listSection.addMenuItem(empty);
         }
 
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
@@ -81,8 +92,70 @@ class ZellijSessionsIndicator extends PanelMenu.Button {
         this.menu.addMenuItem(newItem);
     }
 
-    _addSessionItem(name, {isCurrent, isExited}) {
+    _parseSessions(output) {
+        const sessions = [];
+        if (!output) return sessions;
+
+        for (const line of output.split('\n')) {
+            const trimmed = line.replace(/\s+$/, '');
+            if (!trimmed) continue;
+
+            const bracketIdx = trimmed.search(/\s\[/);
+            const name = bracketIdx > 0 ? trimmed.slice(0, bracketIdx) : trimmed;
+            if (!name) continue;
+
+            sessions.push({
+                name,
+                isCurrent: trimmed.includes('(current)'),
+                isExited: trimmed.includes('EXITED'),
+            });
+        }
+        return sessions;
+    }
+
+    _addScrollableSection() {
+        const scrollView = new St.ScrollView({
+            style_class: 'zellij-session-scroll',
+            y_expand: true,
+        });
+        scrollView.set_policy(St.PolicyType.NEVER, St.PolicyType.AUTOMATIC);
+
+        const listSection = new PopupMenu.PopupMenuSection();
+        scrollView.set_child(listSection.actor);
+
+        const monitor = Main.layoutManager.findMonitorForActor(this);
+        if (monitor)
+            scrollView.style = `max-height: ${Math.round(monitor.height * 0.6)}px;`;
+
+        const wrapper = new PopupMenu.PopupMenuSection();
+        wrapper.actor.add_child(scrollView);
+        this.menu.addMenuItem(wrapper);
+
+        return listSection;
+    }
+
+    _addSessionItem(section, {name, isCurrent, isExited}, isPinned) {
         const item = new PopupMenu.PopupBaseMenuItem();
+        item._sessionName = name;
+        item._section = section;
+
+        if (isPinned) {
+            const dragHandle = new St.Button({
+                child: new St.Icon({icon_name: 'list-drag-handle-symbolic', icon_size: 14, y_align: Clutter.ActorAlign.CENTER}),
+                style_class: 'zellij-drag-handle',
+                reactive: true,
+                can_focus: false,
+                y_expand: true,
+                y_align: Clutter.ActorAlign.FILL,
+            });
+
+            dragHandle.connect('button-press-event', (_actor, event) => {
+                this._beginDrag(item, dragHandle, event);
+                return Clutter.EVENT_STOP;
+            });
+
+            item.add_child(dragHandle);
+        }
 
         const suffix = isExited ? '  (exited)' : isCurrent ? '  (current)' : '';
         const label = new St.Label({
@@ -96,6 +169,21 @@ class ZellijSessionsIndicator extends PanelMenu.Button {
 
         item.add_child(label);
 
+        const pinBtn = new St.Button({
+            child: new St.Icon({icon_name: 'view-pin-symbolic', icon_size: 14, y_align: Clutter.ActorAlign.CENTER}),
+            style_class: isPinned ? 'zellij-pin-button zellij-pin-button-active' : 'zellij-pin-button',
+            reactive: true,
+            y_expand: true,
+            y_align: Clutter.ActorAlign.FILL,
+        });
+
+        pinBtn.connect('clicked', () => {
+            this._togglePin(name);
+            return Clutter.EVENT_STOP;
+        });
+
+        item.add_child(pinBtn);
+
         const editBtn = new St.Button({
             child: new St.Icon({icon_name: 'document-edit-symbolic', icon_size: 14, y_align: Clutter.ActorAlign.CENTER}),
             style_class: 'zellij-edit-button',
@@ -105,7 +193,7 @@ class ZellijSessionsIndicator extends PanelMenu.Button {
         });
 
         editBtn.connect('clicked', () => {
-            this._startRenaming(item, label, name, editBtn, deleteBtn);
+            this._startRenaming(item, label, name);
             return Clutter.EVENT_STOP;
         });
 
@@ -126,7 +214,85 @@ class ZellijSessionsIndicator extends PanelMenu.Button {
 
         item.add_child(deleteBtn);
         item.connect('activate', () => this._openSession(name));
-        this.menu.addMenuItem(item);
+        section.addMenuItem(item);
+    }
+
+    _togglePin(name) {
+        const pinned = this._settings.get_strv('pinned-sessions');
+        const idx = pinned.indexOf(name);
+
+        if (idx >= 0) pinned.splice(idx, 1);
+        else pinned.push(name);
+
+        this._settings.set_strv('pinned-sessions', pinned);
+        this._refreshSessions();
+    }
+
+    _beginDrag(item, handle, event) {
+        if (this._drag) return;
+
+        const box = this._pinnedSection.box;
+        if (box.get_children().length < 2) return;
+
+        item.add_style_class_name('zellij-dragging');
+
+        this._drag = {
+            item,
+            handle,
+            grab: global.stage.grab(handle),
+            motionId: handle.connect('motion-event', (_actor, motionEvent) => {
+                this._updateDragPosition(item, motionEvent);
+                return Clutter.EVENT_STOP;
+            }),
+            releaseId: handle.connect('button-release-event', () => {
+                this._endDrag();
+                return Clutter.EVENT_STOP;
+            }),
+        };
+    }
+
+    _updateDragPosition(item, event) {
+        const box = this._pinnedSection.box;
+        const [stageX, stageY] = event.get_coords();
+        const [transformed, , localY] = box.transform_stage_point(stageX, stageY);
+        if (!transformed) return;
+
+        const children = box.get_children();
+        let target = children.length - 1;
+        for (let i = 0; i < children.length; i++) {
+            const child = children[i];
+            if (localY < child.y + child.height / 2) {
+                target = i;
+                break;
+            }
+        }
+
+        if (children.indexOf(item) !== target)
+            this._pinnedSection.moveMenuItem(item, target);
+    }
+
+    _endDrag() {
+        if (!this._drag) return;
+
+        const {item, handle, grab, motionId, releaseId} = this._drag;
+        this._drag = null;
+
+        handle.disconnect(motionId);
+        handle.disconnect(releaseId);
+        grab.dismiss();
+        item.remove_style_class_name('zellij-dragging');
+
+        this._savePinnedOrder();
+    }
+
+    _savePinnedOrder() {
+        const shown = this._pinnedSection.box.get_children()
+            .map(child => child._sessionName)
+            .filter(name => name);
+        const hidden = this._settings.get_strv('pinned-sessions')
+            .filter(name => !shown.includes(name));
+
+        this._settings.set_strv('pinned-sessions', [...shown, ...hidden]);
     }
 
     _addDisabledItem(text) {
@@ -148,6 +314,8 @@ class ZellijSessionsIndicator extends PanelMenu.Button {
     }
 
     _deleteSession(name, cmd) {
+        this._forgetPinned(name);
+
         try {
             const proc = Gio.Subprocess.new(
                 ['zellij', cmd, name],
@@ -159,11 +327,11 @@ class ZellijSessionsIndicator extends PanelMenu.Button {
         }
     }
 
-    _startRenaming(item, label, name, editBtn, deleteBtn) {
+    _startRenaming(item, label, name) {
         item.hide();
 
-        const menuItems = this.menu._getMenuItems();
-        const position = menuItems.indexOf(item);
+        const section = item._section;
+        const position = section._getMenuItems().indexOf(item);
 
         const renameItem = new PopupMenu.PopupBaseMenuItem({
             activate: false,
@@ -195,7 +363,7 @@ class ZellijSessionsIndicator extends PanelMenu.Button {
         renameItem.add_child(entry);
         renameItem.add_child(confirmBtn);
         renameItem.add_child(cancelBtn);
-        this.menu.addMenuItem(renameItem, position);
+        section.addMenuItem(renameItem, position);
 
         const clutterText = entry.clutter_text;
         clutterText.activatable = true;
@@ -249,6 +417,13 @@ class ZellijSessionsIndicator extends PanelMenu.Button {
     }
 
     _renameSession(oldName, newName) {
+        const pinned = this._settings.get_strv('pinned-sessions');
+        const idx = pinned.indexOf(oldName);
+        if (idx >= 0) {
+            pinned[idx] = newName;
+            this._settings.set_strv('pinned-sessions', pinned);
+        }
+
         try {
             const proc = Gio.Subprocess.new(
                 ['zellij', '-s', oldName, 'action', 'rename-session', newName],
@@ -258,6 +433,15 @@ class ZellijSessionsIndicator extends PanelMenu.Button {
         } catch (e) {
             console.error(`ZellijSessions: failed to rename "${oldName}" to "${newName}": ${e.message}`);
         }
+    }
+
+    _forgetPinned(name) {
+        const pinned = this._settings.get_strv('pinned-sessions');
+        const idx = pinned.indexOf(name);
+        if (idx < 0) return;
+
+        pinned.splice(idx, 1);
+        this._settings.set_strv('pinned-sessions', pinned);
     }
 
     _findSessionWindow(sessionName) {

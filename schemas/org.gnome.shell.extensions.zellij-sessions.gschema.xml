@@ -5,5 +5,8 @@
     <key type="as" name="terminal-wm-classes">
       <default><![CDATA[['ptyxis']]]></default>
     </key>
+    <key type="as" name="pinned-sessions">
+      <default><![CDATA[[]]]></default>
+    </key>
   </schema>
 </schemalist>

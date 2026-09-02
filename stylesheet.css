@@ -23,3 +23,27 @@
 .zellij-delete-button:last-child {
     padding-right: 14px;
 }
+
+.zellij-pin-button {
+    padding: 0 10px;
+    margin: 0;
+    color: rgba(255, 255, 255, 0.35);
+}
+
+.zellij-pin-button-active {
+    color: inherit;
+}
+
+.zellij-drag-handle {
+    padding: 0 6px 0 2px;
+    margin: 0;
+    color: rgba(255, 255, 255, 0.5);
+}
+
+.zellij-dragging {
+    background-color: rgba(255, 255, 255, 0.12);
+}
+
+.zellij-session-scroll {
+    max-height: 400px;
+}
