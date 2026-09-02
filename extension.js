@@ -23,10 +23,14 @@ class ZellijSessionsIndicator extends PanelMenu.Button {
             style_class: 'zellij-panel-icon',
         }));
 
-        this.menu.addMenuItem(new PopupMenu.PopupMenuItem('Loading...'));
+        this._addDisabledItem('Loading...');
         this.menu.connect('open-state-changed', (_menu, open) => {
-            if (open) this._refreshSessions();
-            else this._endDrag();
+            if (open) {
+                this._refreshSessions();
+            } else {
+                this._endDrag();
+                this._cancelRename?.();
+            }
         });
     }
 
@@ -84,30 +88,25 @@ class ZellijSessionsIndicator extends PanelMenu.Button {
         for (const session of others)
             this._addSessionItem(otherSection, session, false);
 
-        if (sessions.length === 0) {
-            const empty = new PopupMenu.PopupMenuItem('No sessions');
-            empty.setSensitive(false);
-            listSection.addMenuItem(empty);
-        }
+        if (sessions.length === 0)
+            this._addDisabledItem('No sessions', listSection);
 
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
 
-        const newItem = new PopupMenu.PopupMenuItem('New Session\u2026');
+        const newItem = new PopupMenu.PopupMenuItem('New Session…');
         newItem.connect('activate', () => this._openFolderPicker());
         this.menu.addMenuItem(newItem);
     }
 
     _parseSessions(output) {
         const sessions = [];
-        if (!output) return sessions;
 
         for (const line of output.split('\n')) {
-            const trimmed = line.replace(/\s+$/, '');
+            const trimmed = line.trimEnd();
             if (!trimmed) continue;
 
             const bracketIdx = trimmed.search(/\s\[/);
             const name = bracketIdx > 0 ? trimmed.slice(0, bracketIdx) : trimmed;
-            if (!name) continue;
 
             sessions.push({
                 name,
@@ -119,18 +118,14 @@ class ZellijSessionsIndicator extends PanelMenu.Button {
     }
 
     _addScrollableSection() {
-        const scrollView = new St.ScrollView({
-            style_class: 'zellij-session-scroll',
-            y_expand: true,
-        });
+        const scrollView = new St.ScrollView({y_expand: true});
         scrollView.set_policy(St.PolicyType.NEVER, St.PolicyType.AUTOMATIC);
 
         const listSection = new PopupMenu.PopupMenuSection();
         scrollView.set_child(listSection.actor);
 
-        const monitor = Main.layoutManager.findMonitorForActor(this);
-        if (monitor)
-            scrollView.style = `max-height: ${Math.round(monitor.height * 0.6)}px;`;
+        const monitor = Main.layoutManager.findMonitorForActor(this) ?? Main.layoutManager.primaryMonitor;
+        scrollView.style = `max-height: ${Math.round(monitor.height * 0.6)}px;`;
 
         const wrapper = new PopupMenu.PopupMenuSection();
         wrapper.actor.add_child(scrollView);
@@ -139,26 +134,26 @@ class ZellijSessionsIndicator extends PanelMenu.Button {
         return listSection;
     }
 
+    _iconButton(iconName, styleClass, extraProps = {}) {
+        return new St.Button({
+            child: new St.Icon({icon_name: iconName, icon_size: 14, y_align: Clutter.ActorAlign.CENTER}),
+            style_class: styleClass,
+            y_expand: true,
+            y_align: Clutter.ActorAlign.FILL,
+            ...extraProps,
+        });
+    }
+
     _addSessionItem(section, {name, isCurrent, isExited}, isPinned) {
         const item = new PopupMenu.PopupBaseMenuItem();
         item._sessionName = name;
-        item._section = section;
 
         if (isPinned) {
-            const dragHandle = new St.Button({
-                child: new St.Icon({icon_name: 'list-drag-handle-symbolic', icon_size: 14, y_align: Clutter.ActorAlign.CENTER}),
-                style_class: 'zellij-drag-handle',
-                reactive: true,
-                can_focus: false,
-                y_expand: true,
-                y_align: Clutter.ActorAlign.FILL,
-            });
-
+            const dragHandle = this._iconButton('list-drag-handle-symbolic', 'zellij-drag-handle', {can_focus: false});
             dragHandle.connect('button-press-event', (_actor, event) => {
                 this._beginDrag(item, dragHandle, event);
                 return Clutter.EVENT_STOP;
             });
-
             item.add_child(dragHandle);
         }
 
@@ -174,62 +169,32 @@ class ZellijSessionsIndicator extends PanelMenu.Button {
 
         item.add_child(label);
 
-        const pinBtn = new St.Button({
-            child: new St.Icon({icon_name: 'view-pin-symbolic', icon_size: 14, y_align: Clutter.ActorAlign.CENTER}),
-            style_class: isPinned ? 'zellij-pin-button zellij-pin-button-active' : 'zellij-pin-button',
-            reactive: true,
-            y_expand: true,
-            y_align: Clutter.ActorAlign.FILL,
-        });
-
-        pinBtn.connect('clicked', () => {
-            this._togglePin(name);
-            return Clutter.EVENT_STOP;
-        });
-
+        const pinClass = isPinned ? 'zellij-pin-button zellij-pin-button-active' : 'zellij-pin-button';
+        const pinBtn = this._iconButton('view-pin-symbolic', pinClass);
+        pinBtn.connect('clicked', () => this._togglePin(name));
         item.add_child(pinBtn);
 
-        const editBtn = new St.Button({
-            child: new St.Icon({icon_name: 'document-edit-symbolic', icon_size: 14, y_align: Clutter.ActorAlign.CENTER}),
-            style_class: 'zellij-edit-button',
-            reactive: true,
-            y_expand: true,
-            y_align: Clutter.ActorAlign.FILL,
-        });
-
-        editBtn.connect('clicked', () => {
-            this._startRenaming(item, label, name);
-            return Clutter.EVENT_STOP;
-        });
-
+        const editBtn = this._iconButton('document-edit-symbolic', 'zellij-edit-button');
+        editBtn.connect('clicked', () => this._startRenaming(item, label, name));
         item.add_child(editBtn);
 
-        const deleteBtn = new St.Button({
-            child: new St.Icon({icon_name: 'user-trash-symbolic', icon_size: 14, y_align: Clutter.ActorAlign.CENTER}),
-            style_class: 'zellij-delete-button',
-            reactive: true,
-            y_expand: true,
-            y_align: Clutter.ActorAlign.FILL,
-        });
-
-        deleteBtn.connect('clicked', () => {
-            this._deleteSession(name, isExited ? 'delete-session' : 'kill-session');
-            return Clutter.EVENT_STOP;
-        });
-
+        const deleteBtn = this._iconButton('user-trash-symbolic', 'zellij-delete-button');
+        deleteBtn.connect('clicked', () => this._deleteSession(name, isExited ? 'delete-session' : 'kill-session'));
         item.add_child(deleteBtn);
+
         item.connect('activate', () => this._openSession(name));
         section.addMenuItem(item);
     }
 
-    _togglePin(name) {
+    _updatePinned(update) {
         const pinned = this._settings.get_strv('pinned-sessions');
-        const idx = pinned.indexOf(name);
+        this._settings.set_strv('pinned-sessions', update(pinned));
+    }
 
-        if (idx >= 0) pinned.splice(idx, 1);
-        else pinned.push(name);
-
-        this._settings.set_strv('pinned-sessions', pinned);
+    _togglePin(name) {
+        this._updatePinned(pinned => pinned.includes(name)
+            ? pinned.filter(n => n !== name)
+            : [...pinned, name]);
         this._refreshSessions();
     }
 
@@ -294,48 +259,50 @@ class ZellijSessionsIndicator extends PanelMenu.Button {
         const shown = this._pinnedSection.box.get_children()
             .map(child => child._sessionName)
             .filter(name => name);
-        const hidden = this._settings.get_strv('pinned-sessions')
-            .filter(name => !shown.includes(name));
 
-        this._settings.set_strv('pinned-sessions', [...shown, ...hidden]);
+        this._updatePinned(pinned => [...shown, ...pinned.filter(name => !shown.includes(name))]);
     }
 
-    _addDisabledItem(text) {
+    _addDisabledItem(text, menu = this.menu) {
         const item = new PopupMenu.PopupMenuItem(text);
         item.setSensitive(false);
-        this.menu.addMenuItem(item);
+        menu.addMenuItem(item);
     }
 
     _openSession(name) {
         const win = this._findSessionWindow(name);
         if (win) {
-            const ws = win.get_workspace();
-            if (ws) ws.activate(global.get_current_time());
-            win.activate(global.get_current_time());
+            Main.activateWindow(win);
             return;
         }
 
         this._spawnTerminal(['zellij', 'attach', name, '-c'], name);
     }
 
-    _deleteSession(name, cmd) {
-        this._forgetPinned(name);
-
+    _runZellij(args) {
         try {
-            const proc = Gio.Subprocess.new(
-                ['zellij', cmd, name],
-                Gio.SubprocessFlags.NONE
-            );
+            const proc = Gio.Subprocess.new(['zellij', ...args], Gio.SubprocessFlags.NONE);
             proc.wait_async(null, () => this._refreshSessions());
         } catch (e) {
-            console.error(`ZellijSessions: failed to ${cmd} "${name}": ${e.message}`);
+            console.error(`ZellijSessions: failed to run "zellij ${args.join(' ')}": ${e.message}`);
         }
     }
 
+    _deleteSession(name, cmd) {
+        this._updatePinned(pinned => pinned.filter(n => n !== name));
+        this._runZellij([cmd, name]);
+    }
+
+    _renameSession(oldName, newName) {
+        this._updatePinned(pinned => pinned.map(n => n === oldName ? newName : n));
+        this._runZellij(['-s', oldName, 'action', 'rename-session', newName]);
+    }
+
     _startRenaming(item, label, name) {
+        this._cancelRename?.();
         item.hide();
 
-        const section = item._section;
+        const section = item._parent;
         const position = section._getMenuItems().indexOf(item);
 
         const renameItem = new PopupMenu.PopupBaseMenuItem({
@@ -353,17 +320,8 @@ class ZellijSessionsIndicator extends PanelMenu.Button {
             style_class: 'zellij-rename-entry',
         });
 
-        const confirmBtn = new St.Button({
-            child: new St.Icon({icon_name: 'object-select-symbolic', icon_size: 14}),
-            style_class: 'zellij-confirm-button',
-            reactive: true,
-        });
-
-        const cancelBtn = new St.Button({
-            child: new St.Icon({icon_name: 'process-stop-symbolic', icon_size: 14}),
-            style_class: 'zellij-cancel-button',
-            reactive: true,
-        });
+        const confirmBtn = this._iconButton('object-select-symbolic', 'zellij-confirm-button');
+        const cancelBtn = this._iconButton('process-stop-symbolic', 'zellij-cancel-button');
 
         renameItem.add_child(entry);
         renameItem.add_child(confirmBtn);
@@ -379,11 +337,7 @@ class ZellijSessionsIndicator extends PanelMenu.Button {
         const finish = (newName) => {
             if (finished) return;
             finished = true;
-
-            if (this._menuCloseId) {
-                this.menu.disconnect(this._menuCloseId);
-                this._menuCloseId = null;
-            }
+            this._cancelRename = null;
 
             renameItem.destroy();
             item.show();
@@ -393,11 +347,9 @@ class ZellijSessionsIndicator extends PanelMenu.Button {
                 this._renameSession(name, newName);
             }
         };
+        this._cancelRename = () => finish(null);
 
-        clutterText.connect('activate', () => {
-            finish(entry.get_text().trim());
-        });
-
+        clutterText.connect('activate', () => finish(entry.get_text().trim()));
         clutterText.connect('key-press-event', (_actor, event) => {
             if (event.get_key_symbol() === Clutter.KEY_Escape) {
                 finish(null);
@@ -406,47 +358,8 @@ class ZellijSessionsIndicator extends PanelMenu.Button {
             return Clutter.EVENT_PROPAGATE;
         });
 
-        confirmBtn.connect('clicked', () => {
-            finish(entry.get_text().trim());
-            return Clutter.EVENT_STOP;
-        });
-
-        cancelBtn.connect('clicked', () => {
-            finish(null);
-            return Clutter.EVENT_STOP;
-        });
-
-        this._menuCloseId = this.menu.connect('open-state-changed', (_menu, open) => {
-            if (!open) finish(null);
-        });
-    }
-
-    _renameSession(oldName, newName) {
-        const pinned = this._settings.get_strv('pinned-sessions');
-        const idx = pinned.indexOf(oldName);
-        if (idx >= 0) {
-            pinned[idx] = newName;
-            this._settings.set_strv('pinned-sessions', pinned);
-        }
-
-        try {
-            const proc = Gio.Subprocess.new(
-                ['zellij', '-s', oldName, 'action', 'rename-session', newName],
-                Gio.SubprocessFlags.NONE
-            );
-            proc.wait_async(null, () => this._refreshSessions());
-        } catch (e) {
-            console.error(`ZellijSessions: failed to rename "${oldName}" to "${newName}": ${e.message}`);
-        }
-    }
-
-    _forgetPinned(name) {
-        const pinned = this._settings.get_strv('pinned-sessions');
-        const idx = pinned.indexOf(name);
-        if (idx < 0) return;
-
-        pinned.splice(idx, 1);
-        this._settings.set_strv('pinned-sessions', pinned);
+        confirmBtn.connect('clicked', () => finish(entry.get_text().trim()));
+        cancelBtn.connect('clicked', () => finish(null));
     }
 
     destroy() {
@@ -455,11 +368,11 @@ class ZellijSessionsIndicator extends PanelMenu.Button {
     }
 
     _findSessionWindow(sessionName) {
+        const terminalClasses = this._settings.get_strv('terminal-wm-classes');
+
         for (const actor of global.get_window_actors()) {
             const win = actor.meta_window;
             const wmClass = (win.get_wm_class() || '').toLowerCase();
-
-            const terminalClasses = this._settings.get_strv('terminal-wm-classes');
             if (terminalClasses.length > 0 && !terminalClasses.some(cls => wmClass.includes(cls)))
                 continue;
 
