@@ -449,6 +449,11 @@ class ZellijSessionsIndicator extends PanelMenu.Button {
         this._settings.set_strv('pinned-sessions', pinned);
     }
 
+    destroy() {
+        this._endDrag();
+        super.destroy();
+    }
+
     _findSessionWindow(sessionName) {
         for (const actor of global.get_window_actors()) {
             const win = actor.meta_window;
