@@ -28,9 +28,22 @@ GNOME Shell extension for managing [Zellij](https://github.com/zellij-org/zellij
 
 ## Install
 
-### From GNOME Extensions
+One command — clones the repo, copies the extension into `~/.local/share/gnome-shell/extensions`, compiles the schema
+and enables it:
 
-Coming soon.
+```bash
+curl -fsSL https://raw.githubusercontent.com/Darkwing4/zellij-session-manager/main/install.sh | bash
+```
+
+Then log out and back in (GNOME Shell cannot be restarted on Wayland).
+
+From a local checkout the same script installs from the working tree instead of cloning:
+
+```bash
+git clone https://github.com/Darkwing4/zellij-session-manager.git
+cd zellij-session-manager
+./install.sh
+```
 
 ### From a release bundle
 
@@ -39,24 +52,7 @@ UUID=zellij-sessions-manager@darkwing4.dev
 mkdir -p ~/.local/share/gnome-shell/extensions/$UUID
 unzip -o $UUID.shell-extension.zip -d ~/.local/share/gnome-shell/extensions/$UUID
 glib-compile-schemas ~/.local/share/gnome-shell/extensions/$UUID/schemas
-```
-
-### From source
-
-```bash
-git clone https://github.com/Darkwing4/zellij-session-manager.git
-cd zellij-session-manager
-UUID=zellij-sessions-manager@darkwing4.dev
-glib-compile-schemas schemas
-mkdir -p ~/.local/share/gnome-shell/extensions/$UUID
-cp -r extension.js metadata.json stylesheet.css schemas LICENSE \
-   ~/.local/share/gnome-shell/extensions/$UUID/
-```
-
-Log out and back in (GNOME Shell cannot be restarted on Wayland), then enable it:
-
-```bash
-gnome-extensions enable zellij-sessions-manager@darkwing4.dev
+gnome-extensions enable $UUID
 ```
 
 ## Configuration
