@@ -83,9 +83,10 @@ Pinned sessions and their order live in `pinned-sessions` and are managed from t
 
 The extension adds an icon to the panel. Opening the menu runs `zellij list-sessions --no-formatting` and builds the list
 from its output. Clicking a session searches open windows for a matching title (`Zellij (<name>)`) — if found it focuses
-that window, otherwise it launches `zellij attach <name> -c` in a new terminal. Renaming uses
-`zellij -s <old> action rename-session <new>`; deleting uses `kill-session` for running sessions and `delete-session` for
-exited ones.
+that window, otherwise it launches `zellij attach <name> -c` in a new terminal. Renaming a running session uses
+`zellij -s <old> action rename-session <new>`; an exited one is renamed by moving its directory under
+`~/.cache/zellij/*/session_info/`, since `rename-session` only reaches running sessions. Deleting uses `kill-session` for
+running sessions and `delete-session` for exited ones.
 
 ## License
 

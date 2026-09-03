@@ -175,7 +175,7 @@ class ZellijSessionsIndicator extends PanelMenu.Button {
         item.add_child(pinBtn);
 
         const editBtn = this._iconButton('document-edit-symbolic', 'zellij-edit-button');
-        editBtn.connect('clicked', () => this._startRenaming(item, label, name));
+        editBtn.connect('clicked', () => this._startRenaming(item, label, name, isExited));
         item.add_child(editBtn);
 
         const deleteBtn = this._iconButton('user-trash-symbolic', 'zellij-delete-button');
@@ -293,12 +293,65 @@ class ZellijSessionsIndicator extends PanelMenu.Button {
         this._runZellij([cmd, name]);
     }
 
-    _renameSession(oldName, newName) {
+    _renameSession(oldName, newName, isExited) {
         this._updatePinned(pinned => pinned.map(n => n === oldName ? newName : n));
+
+        if (isExited) {
+            this._renameExitedSession(oldName, newName);
+            this._refreshSessions();
+            return;
+        }
+
         this._runZellij(['-s', oldName, 'action', 'rename-session', newName]);
     }
 
-    _startRenaming(item, label, name) {
+    _renameExitedSession(oldName, newName) {
+        const moves = this._findStoredSessions(oldName, newName);
+
+        if (moves.length === 0) {
+            console.error(`ZellijSessions: no stored data found for exited session "${oldName}"`);
+            return;
+        }
+
+        if (moves.some(({target}) => target.query_exists(null))) {
+            console.error(`ZellijSessions: cannot rename "${oldName}", session "${newName}" already exists`);
+            return;
+        }
+
+        for (const {source, target} of moves) {
+            try {
+                source.move(target, Gio.FileCopyFlags.NONE, null, null);
+            } catch (e) {
+                console.error(`ZellijSessions: failed to rename exited session "${oldName}" to "${newName}": ${e.message}`);
+                return;
+            }
+        }
+    }
+
+    _findStoredSessions(oldName, newName) {
+        const cacheDir = Gio.File.new_for_path(GLib.build_filenamev([GLib.get_user_cache_dir(), 'zellij']));
+        const moves = [];
+
+        try {
+            const versions = cacheDir.enumerate_children('standard::name,standard::type', Gio.FileQueryInfoFlags.NONE, null);
+
+            let info;
+            while ((info = versions.next_file(null)) !== null) {
+                if (info.get_file_type() !== Gio.FileType.DIRECTORY) continue;
+
+                const sessionInfo = cacheDir.get_child(info.get_name()).get_child('session_info');
+                const source = sessionInfo.get_child(oldName);
+                if (source.query_exists(null))
+                    moves.push({source, target: sessionInfo.get_child(newName)});
+            }
+        } catch (e) {
+            console.error(`ZellijSessions: failed to read the zellij cache: ${e.message}`);
+        }
+
+        return moves;
+    }
+
+    _startRenaming(item, label, name, isExited) {
         this._cancelRename?.();
         item.hide();
 
@@ -344,7 +397,7 @@ class ZellijSessionsIndicator extends PanelMenu.Button {
 
             if (newName && newName !== name) {
                 label.text = newName;
-                this._renameSession(name, newName);
+                this._renameSession(name, newName, isExited);
             }
         };
         this._cancelRename = () => finish(null);
