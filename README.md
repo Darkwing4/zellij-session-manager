@@ -10,6 +10,7 @@ GNOME Shell extension for managing [Zellij](https://github.com/zellij-org/zellij
 ## Features
 
 - **Session list** — all Zellij sessions (active, exited, current) in a dropdown menu
+- **Type to search** — start typing with the menu open and a search field appears, filtering sessions by substring; it disappears once you clear it, and `Ctrl+Z` undoes an accidental wipe
 - **Pinned sessions** — pin the sessions you use daily to the top of the list
 - **Drag to reorder** — grab a pinned session by its handle and drop it into any slot
 - **Sorted list** — unpinned sessions are grouped active first, then exited, alphabetically inside each group

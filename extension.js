@@ -23,15 +23,49 @@ class ZellijSessionsIndicator extends PanelMenu.Button {
             style_class: 'zellij-panel-icon',
         }));
 
+        this._sessions = [];
+        this._searchText = '';
+        this._searchHistory = [];
+
         this._addDisabledItem('Loading...');
         this.menu.connect('open-state-changed', (_menu, open) => {
             if (open) {
+                this._resetSearch();
                 this._refreshSessions();
             } else {
                 this._endDrag();
                 this._cancelRename?.();
             }
         });
+        const onKeyPress = (_actor, event) => this._onMenuKeyPress(event);
+        this.menu.actor.connect('key-press-event', onKeyPress);
+        this.connect('key-press-event', onKeyPress);
+    }
+
+    _onMenuKeyPress(event) {
+        if (!this.menu.isOpen) return Clutter.EVENT_PROPAGATE;
+
+        if (this._searchEntry && global.stage.get_key_focus() === this._searchEntry.clutter_text)
+            return Clutter.EVENT_PROPAGATE;
+
+        const state = event.get_state();
+        const controlHeld = (state & Clutter.ModifierType.CONTROL_MASK) !== 0;
+        const altHeld = (state & Clutter.ModifierType.MOD1_MASK) !== 0;
+
+        if (controlHeld && !altHeld && event.get_key_symbol() === Clutter.KEY_z) {
+            if (this._searchHistory.length === 0) return Clutter.EVENT_PROPAGATE;
+
+            this._showSearch(this._searchHistory.pop());
+            return Clutter.EVENT_STOP;
+        }
+
+        if (controlHeld || altHeld) return Clutter.EVENT_PROPAGATE;
+
+        const unicode = event.get_unicode_value();
+        if (unicode < 32 || unicode === 127) return Clutter.EVENT_PROPAGATE;
+
+        this._showSearch(this._searchText + String.fromCodePoint(unicode));
+        return Clutter.EVENT_STOP;
     }
 
     _refreshSessions() {
@@ -61,41 +95,55 @@ class ZellijSessionsIndicator extends PanelMenu.Button {
 
     _buildMenu(output) {
         this.menu.removeAll();
+        this._searchItem = null;
+        this._searchEntry = null;
 
-        const sessions = this._parseSessions(output);
-        const pinnedNames = this._settings.get_strv('pinned-sessions');
-        const byName = new Map(sessions.map(s => [s.name, s]));
-        const pinned = pinnedNames.map(name => byName.get(name)).filter(s => s !== undefined);
-        const others = sessions
-            .filter(s => !pinnedNames.includes(s.name))
-            .sort((a, b) => {
-                if (a.isExited !== b.isExited) return a.isExited ? 1 : -1;
-                return a.name.localeCompare(b.name);
-            });
-
-        const listSection = this._addScrollableSection();
-
-        this._pinnedSection = new PopupMenu.PopupMenuSection();
-        listSection.addMenuItem(this._pinnedSection);
-        for (const session of pinned)
-            this._addSessionItem(this._pinnedSection, session, true);
-
-        if (pinned.length > 0 && others.length > 0)
-            listSection.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
-
-        const otherSection = new PopupMenu.PopupMenuSection();
-        listSection.addMenuItem(otherSection);
-        for (const session of others)
-            this._addSessionItem(otherSection, session, false);
-
-        if (sessions.length === 0)
-            this._addDisabledItem('No sessions', listSection);
+        this._sessions = this._parseSessions(output);
+        this._listSection = this._addScrollableSection();
+        this._renderSessions();
 
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
 
         const newItem = new PopupMenu.PopupMenuItem('New Session…');
         newItem.connect('activate', () => this._openFolderPicker());
         this.menu.addMenuItem(newItem);
+
+        if (this._searchText) this._showSearch(this._searchText);
+    }
+
+    _renderSessions() {
+        this._listSection.removeAll();
+
+        const filter = this._searchText.toLowerCase();
+        const matching = filter
+            ? this._sessions.filter(s => s.name.toLowerCase().includes(filter))
+            : this._sessions;
+
+        const pinnedNames = this._settings.get_strv('pinned-sessions');
+        const byName = new Map(matching.map(s => [s.name, s]));
+        const pinned = pinnedNames.map(name => byName.get(name)).filter(s => s !== undefined);
+        const others = matching
+            .filter(s => !pinnedNames.includes(s.name))
+            .sort((a, b) => {
+                if (a.isExited !== b.isExited) return a.isExited ? 1 : -1;
+                return a.name.localeCompare(b.name);
+            });
+
+        this._pinnedSection = new PopupMenu.PopupMenuSection();
+        this._listSection.addMenuItem(this._pinnedSection);
+        for (const session of pinned)
+            this._addSessionItem(this._pinnedSection, session, true, !filter);
+
+        if (pinned.length > 0 && others.length > 0)
+            this._listSection.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+
+        const otherSection = new PopupMenu.PopupMenuSection();
+        this._listSection.addMenuItem(otherSection);
+        for (const session of others)
+            this._addSessionItem(otherSection, session, false, false);
+
+        if (matching.length === 0)
+            this._addDisabledItem(filter ? 'No matches' : 'No sessions', this._listSection);
     }
 
     _parseSessions(output) {
@@ -115,6 +163,109 @@ class ZellijSessionsIndicator extends PanelMenu.Button {
             });
         }
         return sessions;
+    }
+
+    _resetSearch() {
+        this._searchText = '';
+        this._searchHistory = [];
+        this._searchEditKind = null;
+    }
+
+    _showSearch(text) {
+        if (!text) return;
+
+        if (!this._searchEntry) this._createSearchItem();
+
+        this._searchItem.show();
+        this._setSearchText(text);
+
+        const clutterText = this._searchEntry.clutter_text;
+        global.stage.set_key_focus(clutterText);
+        clutterText.set_selection(text.length, text.length);
+    }
+
+    _createSearchItem() {
+        const item = new PopupMenu.PopupBaseMenuItem({
+            activate: false,
+            reactive: false,
+            can_focus: false,
+            hover: false,
+        });
+
+        const entry = new St.Entry({
+            x_expand: true,
+            can_focus: true,
+            reactive: true,
+            style_class: 'zellij-search-entry',
+            primary_icon: new St.Icon({icon_name: 'edit-find-symbolic', icon_size: 14}),
+        });
+
+        item.add_child(entry);
+        this.menu.addMenuItem(item, 0);
+
+        entry.clutter_text.connect('text-changed', () => this._onSearchChanged());
+        entry.clutter_text.connect('key-press-event', (_actor, event) => {
+            const controlHeld = (event.get_state() & Clutter.ModifierType.CONTROL_MASK) !== 0;
+            if (controlHeld && event.get_key_symbol() === Clutter.KEY_z) {
+                this._undoSearch();
+                return Clutter.EVENT_STOP;
+            }
+            return Clutter.EVENT_PROPAGATE;
+        });
+
+        this._searchItem = item;
+        this._searchEntry = entry;
+    }
+
+    _setSearchText(text) {
+        this._applyingSearchText = true;
+        this._searchEntry.set_text(text);
+        this._applyingSearchText = false;
+
+        this._searchText = text;
+        this._renderSessions();
+    }
+
+    _onSearchChanged() {
+        if (this._applyingSearchText) return;
+
+        const text = this._searchEntry.get_text();
+        const kind = text.length >= this._searchText.length ? 'insert' : 'delete';
+
+        if (kind !== this._searchEditKind) {
+            this._searchHistory.push(this._searchText);
+            this._searchEditKind = kind;
+        }
+
+        this._searchText = text;
+
+        if (text) this._renderSessions();
+        else this._hideSearch();
+    }
+
+    _hideSearch() {
+        this._searchText = '';
+        this._searchEditKind = null;
+
+        this._searchItem?.hide();
+        this._renderSessions();
+        global.stage.set_key_focus(this.menu.actor);
+    }
+
+    _undoSearch() {
+        if (this._searchHistory.length === 0) return;
+
+        const text = this._searchHistory.pop();
+        this._searchEditKind = null;
+
+        if (!text) {
+            this._setSearchText('');
+            this._hideSearch();
+            return;
+        }
+
+        this._setSearchText(text);
+        this._searchEntry.clutter_text.set_selection(text.length, text.length);
     }
 
     _addScrollableSection() {
@@ -144,11 +295,11 @@ class ZellijSessionsIndicator extends PanelMenu.Button {
         });
     }
 
-    _addSessionItem(section, {name, isCurrent, isExited}, isPinned) {
+    _addSessionItem(section, {name, isCurrent, isExited}, isPinned, isReorderable) {
         const item = new PopupMenu.PopupBaseMenuItem();
         item._sessionName = name;
 
-        if (isPinned) {
+        if (isReorderable) {
             const dragHandle = this._iconButton('list-drag-handle-symbolic', 'zellij-drag-handle', {can_focus: false});
             dragHandle.connect('button-press-event', (_actor, event) => {
                 this._beginDrag(item, dragHandle, event);
