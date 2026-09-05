@@ -8,6 +8,8 @@ import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 
+const TITLE_SEPARATORS = [' | ', ' — ', ' - ', ': '];
+
 const ZellijSessionsIndicator = GObject.registerClass(
 class ZellijSessionsIndicator extends PanelMenu.Button {
 
@@ -580,11 +582,20 @@ class ZellijSessionsIndicator extends PanelMenu.Button {
             if (terminalClasses.length > 0 && !terminalClasses.some(cls => wmClass.includes(cls)))
                 continue;
 
-            const title = win.get_title() || '';
-            if (title.includes(`Zellij (${sessionName})`)) return win;
-            if (title === sessionName) return win;
+            if (this._titleMatchesSession(win.get_title() || '', sessionName)) return win;
         }
         return null;
+    }
+
+    _titleMatchesSession(title, sessionName) {
+        if (title === sessionName) return true;
+        if (title.includes(`Zellij (${sessionName})`)) return true;
+
+        for (const separator of TITLE_SEPARATORS) {
+            const index = title.indexOf(separator);
+            if (index > 0 && title.slice(0, index) === sessionName) return true;
+        }
+        return false;
     }
 
     _openFolderPicker() {

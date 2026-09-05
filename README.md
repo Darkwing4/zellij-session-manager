@@ -71,7 +71,8 @@ gsettings --schemadir ~/.local/share/gnome-shell/extensions/zellij-sessions-mana
 ```
 
 `terminal-wm-classes` narrows the window search to specific terminals when focusing an already open session. Empty (the
-default) matches any window whose title comes from Zellij:
+default) matches any window whose title belongs to the session, so it only needs setting if some other window keeps
+winning the match:
 
 ```bash
 gsettings --schemadir ~/.local/share/gnome-shell/extensions/zellij-sessions-manager@darkwing4.dev/schemas \
@@ -83,8 +84,9 @@ Pinned sessions and their order live in `pinned-sessions` and are managed from t
 ## How it works
 
 The extension adds an icon to the panel. Opening the menu runs `zellij list-sessions --no-formatting` and builds the list
-from its output. Clicking a session searches open windows for a matching title (`Zellij (<name>)`) — if found it focuses
-that window, otherwise it launches `zellij attach <name> -c` in a new terminal. Renaming a running session uses
+from its output. Clicking a session searches open windows for one whose title belongs to that session — `Zellij (<name>)`, the bare
+session name, or the name as the first segment of a composed title like `<name> | <pane>`. If found it focuses that
+window, otherwise it launches `zellij attach <name> -c` in a new terminal. Renaming a running session uses
 `zellij -s <old> action rename-session <new>`; an exited one is renamed by moving its directory under
 `~/.cache/zellij/*/session_info/`, since `rename-session` only reaches running sessions. Deleting uses `kill-session` for
 running sessions and `delete-session` for exited ones.
