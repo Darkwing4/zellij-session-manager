@@ -25,7 +25,6 @@ GNOME Shell extension for managing [Zellij](https://github.com/zellij-org/zellij
 
 - GNOME Shell 49+
 - [Zellij](https://github.com/zellij-org/zellij) installed and in `$PATH`
-- [Zenity](https://gitlab.gnome.org/GNOME/zenity) for the folder picker (preinstalled on most distributions)
 
 ## Install
 
@@ -86,7 +85,8 @@ Pinned sessions and their order live in `pinned-sessions` and are managed from t
 The extension adds an icon to the panel. Opening the menu runs `zellij list-sessions --no-formatting` and builds the list
 from its output. Clicking a session searches open windows for one whose title belongs to that session — `Zellij (<name>)`, the bare
 session name, or the name as the first segment of a composed title like `<name> | <pane>`. If found it focuses that
-window, otherwise it launches `zellij attach <name> -c` in a new terminal. Renaming a running session uses
+window, otherwise it launches `zellij attach <name> -c` in a new terminal. The folder picker behind **New Session…** is the
+`org.freedesktop.portal.FileChooser` desktop portal, so it needs no helper program. Renaming a running session uses
 `zellij -s <old> action rename-session <new>`; an exited one is renamed by moving its directory under
 `~/.cache/zellij/*/session_info/`, since `rename-session` only reaches running sessions. Deleting uses `kill-session` for
 running sessions and `delete-session` for exited ones.

@@ -599,29 +599,57 @@ class ZellijSessionsIndicator extends PanelMenu.Button {
     }
 
     _openFolderPicker() {
-        try {
-            const proc = Gio.Subprocess.new(
-                ['zenity', '--file-selection', '--directory', '--title=Select Session Folder'],
-                Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE
-            );
+        const options = {
+            handle_token: new GLib.Variant('s', `zellij_sessions_${GLib.random_int_range(0, 1000000)}`),
+            directory: new GLib.Variant('b', true),
+            modal: new GLib.Variant('b', true),
+        };
 
-            proc.communicate_utf8_async(null, null, (_proc, result) => {
+        Gio.DBus.session.call(
+            'org.freedesktop.portal.Desktop',
+            '/org/freedesktop/portal/desktop',
+            'org.freedesktop.portal.FileChooser',
+            'OpenFile',
+            new GLib.Variant('(ssa{sv})', ['', 'Select Session Folder', options]),
+            new GLib.VariantType('(o)'),
+            Gio.DBusCallFlags.NONE,
+            -1,
+            null,
+            (connection, result) => {
                 try {
-                    const [, stdout] = proc.communicate_utf8_finish(result);
-                    if (proc.get_exit_status() !== 0) return;
-
-                    const folderPath = stdout.trim();
-                    if (!folderPath) return;
-
-                    const folderName = GLib.path_get_basename(folderPath);
-                    this._spawnTerminal(['zellij', 'attach', folderName, '-c'], folderName, folderPath);
+                    const [requestPath] = connection.call_finish(result).deep_unpack();
+                    this._awaitPickedFolder(requestPath);
                 } catch (e) {
-                    console.error(`ZellijSessions: folder picker error: ${e.message}`);
+                    console.error(`ZellijSessions: failed to open folder picker: ${e.message}`);
                 }
-            });
-        } catch (e) {
-            console.error(`ZellijSessions: failed to open folder picker: ${e.message}`);
-        }
+            }
+        );
+    }
+
+    _awaitPickedFolder(requestPath) {
+        const signalId = Gio.DBus.session.signal_subscribe(
+            'org.freedesktop.portal.Desktop',
+            'org.freedesktop.portal.Request',
+            'Response',
+            requestPath,
+            null,
+            Gio.DBusSignalFlags.NONE,
+            (connection, _sender, _path, _iface, _signal, params) => {
+                connection.signal_unsubscribe(signalId);
+
+                const [response, results] = params.deep_unpack();
+                if (response !== 0) return;
+
+                const uris = results['uris']?.deep_unpack() ?? [];
+                if (uris.length === 0) return;
+
+                const folderPath = Gio.File.new_for_uri(uris[0]).get_path();
+                if (!folderPath) return;
+
+                const folderName = GLib.path_get_basename(folderPath);
+                this._spawnTerminal(['zellij', 'attach', folderName, '-c'], folderName, folderPath);
+            }
+        );
     }
 
     _spawnTerminal(args, title, workingDirectory) {
