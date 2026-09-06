@@ -39,15 +39,17 @@ class ZellijSessionsIndicator extends PanelMenu.Button {
                 this._cancelRename?.();
             }
         });
-        const onKeyPress = (_actor, event) => this._onMenuKeyPress(event);
-        this.menu.actor.connect('key-press-event', onKeyPress);
-        this.connect('key-press-event', onKeyPress);
+        this.menu.actor.connect('captured-event', (_actor, event) =>
+            event.type() === Clutter.EventType.KEY_PRESS
+                ? this._onSearchKeyPress(event)
+                : Clutter.EVENT_PROPAGATE);
     }
 
-    _onMenuKeyPress(event) {
+    _onSearchKeyPress(event) {
         if (!this.menu.isOpen) return Clutter.EVENT_PROPAGATE;
 
-        if (this._searchEntry && global.stage.get_key_focus() === this._searchEntry.clutter_text)
+        const focus = global.stage.get_key_focus();
+        if (focus instanceof Clutter.Text && focus.editable)
             return Clutter.EVENT_PROPAGATE;
 
         const state = event.get_state();
@@ -63,15 +65,22 @@ class ZellijSessionsIndicator extends PanelMenu.Button {
 
         if (controlHeld || altHeld) return Clutter.EVENT_PROPAGATE;
 
-        const unicode = event.get_unicode_value();
-        if (unicode < 32 || unicode === 127) return Clutter.EVENT_PROPAGATE;
+        const character = event.get_key_unicode();
+        if (!character || character.codePointAt(0) < 32 || character === '\u007f')
+            return Clutter.EVENT_PROPAGATE;
 
-        this._showSearch(this._searchText + String.fromCodePoint(unicode));
+        this._showSearch(this._searchText + character);
         return Clutter.EVENT_STOP;
     }
 
-    _refreshSessions() {
+    _clearMenu() {
         this.menu.removeAll();
+        this._searchItem = null;
+        this._searchEntry = null;
+    }
+
+    _refreshSessions() {
+        this._clearMenu();
         this._addDisabledItem('Loading...');
 
         try {
@@ -85,20 +94,18 @@ class ZellijSessionsIndicator extends PanelMenu.Button {
                     const [, stdout] = proc.communicate_utf8_finish(result);
                     this._buildMenu(stdout.trim());
                 } catch (e) {
-                    this.menu.removeAll();
+                    this._clearMenu();
                     this._addDisabledItem('Failed to list sessions');
                 }
             });
         } catch (e) {
-            this.menu.removeAll();
+            this._clearMenu();
             this._addDisabledItem('Zellij not found');
         }
     }
 
     _buildMenu(output) {
-        this.menu.removeAll();
-        this._searchItem = null;
-        this._searchEntry = null;
+        this._clearMenu();
 
         this._sessions = this._parseSessions(output);
         this._listSection = this._addScrollableSection();
@@ -270,6 +277,21 @@ class ZellijSessionsIndicator extends PanelMenu.Button {
         this._searchEntry.clutter_text.set_selection(text.length, text.length);
     }
 
+    _highlightMatch(label, name, suffix) {
+        const filter = this._searchText.toLowerCase();
+        const lowered = name.toLowerCase();
+        if (!filter || lowered.length !== name.length) return;
+
+        const start = lowered.indexOf(filter);
+        if (start === -1) return;
+
+        const end = start + filter.length;
+        const escape = text => GLib.markup_escape_text(text, -1);
+        label.clutter_text.set_markup(
+            `${escape(name.slice(0, start))}<b>${escape(name.slice(start, end))}</b>${escape(name.slice(end) + suffix)}`
+        );
+    }
+
     _addScrollableSection() {
         const scrollView = new St.ScrollView({y_expand: true});
         scrollView.set_policy(St.PolicyType.NEVER, St.PolicyType.AUTOMATIC);
@@ -320,6 +342,7 @@ class ZellijSessionsIndicator extends PanelMenu.Button {
         if (isExited) label.style_class = 'zellij-session-exited';
         else if (isCurrent) label.style_class = 'zellij-session-current';
 
+        this._highlightMatch(label, name, suffix);
         item.add_child(label);
 
         const pinClass = isPinned ? 'zellij-pin-button zellij-pin-button-active' : 'zellij-pin-button';
@@ -549,6 +572,7 @@ class ZellijSessionsIndicator extends PanelMenu.Button {
             item.show();
 
             if (newName && newName !== name) {
+                label.clutter_text.set_use_markup(false);
                 label.text = newName;
                 this._renameSession(name, newName, isExited);
             }
